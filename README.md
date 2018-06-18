@@ -1,11 +1,13 @@
-<p align="center">
+<p>
   <img
     src="https://s3-us-west-2.amazonaws.com/ftwcoin.io/FTW_LOGO.png"
     width="125px;">
 </p>
 
-#FTW Smart contact
-The first decentralized blockchain lottery based on NEO
+<h1>FTW Smart contact</h1>
+<p>
+  The first decentralized blockchain lottery based on NEO
+</p>
 
 ## Philosophy 
 
