@@ -4,10 +4,8 @@
     width="125px;">
 </p>
 
-<h1>FTW Smart contact</h1>
-<p align="center">
-  The first decentralized blockchain lottery based on NEO
-</p>
+#FTW Smart contact
+The first decentralized blockchain lottery based on NEO
 
 ## Philosophy 
 
