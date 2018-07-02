@@ -123,3 +123,8 @@ get_ticket_info(no)<br/>
 get_drawing_result(no)<br/>
 get_all_tickets_by_player(address)<br/>
 get_all_drawing_results_()<br/>
+
+
+## Play
+You can trigger method using [NEO-CLI](https://github.com/neo-project/neo-cli), [NEO-GUI](https://github.com/neo-project/neo-gui) and other NEO wallet that supports NEP5 tokens.<br/>
+[FTW wallet](https://wallet.ftwcoin.io) provides nice UI for this smart contract.
