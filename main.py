@@ -1,34 +1,54 @@
 from boa.interop.Neo.Action import RegisterAction
 from boa.interop.Neo.Header import GetConsensusData
-from boa.interop.Neo.Blockchain import GetHeight, GetHeader
+from boa.interop.Neo.Blockchain import GetHeight, GetHeader, GetTransaction
 from boa.interop.Neo.TriggerType import Verification, Application
 from boa.interop.Neo.Runtime import Log, Notify, CheckWitness, GetTrigger, GetTime
-from boa.builtins import concat, list, range, has_key
-from boa.interop.Neo.Storage import Get, Put, GetContext, Delete
+from boa.builtins import concat, list, range, has_key, substr, sha1, hash160
+from boa.interop.Neo.Storage import Get, Put, GetContext, Delete, Find
+from boa.interop.System.ExecutionEngine import GetScriptContainer, GetCallingScriptHash, GetEntryScriptHash, GetExecutingScriptHash
+from boa.interop.Neo.Iterator import IterNext, IterKey, IterValue, IterValues
 
-# -- Lottery Global variables
+
+# Check list
+# -- Is Drawing schedule correct?
+# -- Is Winning number correct?
+# -- Is Owner and pool address correct?
+# -- Is Testnet only methods are deleted?
+
+# -- Lottery variables
+PLAYER = 'player'
+TRANSACTION = 'transaction'
 TICKET = 'ticket'
 RESULT = 'result'
 FLAG = 'flag'
-POOL = 'pool'
 CURRENT_GAME_NO = 'current_game_no'
 LAST_TICKET_NO = "last_ticket_no"
 LAST_VERIFIED_TICKET_NO = "last_verified_ticket_no"
 LAST_DRAWING_AT = 'last_drawing_at'
 LAST_DRAWING_TICKET = 'last_drawing_ticket'
-DRAWING_SCHEDULE = 86400
+DRAWING_SCHEDULE = 3600
+# DRAWING_SCHEDULE = 86400
 TICKET_PRICE = 1 * 100000000  # 1 FTW
-DRAWING_COMMISSION = 1 * 10000000  # 0.1 FTW
+DRAWING_COMMISSION = 5000000  # 5% of TICKET_PRICE
 INITIAL_POOL = 5000000 * 100000000  # 5m FTW
 
 
-# -- NEP5 Global variables
+# -- NEP5 variables
 TOKEN_NAME = 'FTW Token'
 SYMBOL = 'FTW'
-# OWNER = b'#\xba\'\x03\xc52c\xe8\xd6\xe5"\xdc2 39\xdc\xd8\xee\xe9' #privatenet
-OWNER = b'\x99\xd6H\x1aQh\x8c\xd1j\x0bX\x02=\x17\xd4\xdd\x9b\rS6' #testnet
 DECIMALS = 8
 TOTAL_SUPPLY = 100000000 * 100000000  # 100m total supply * 10^8 (decimals)
+
+
+# -- Privatenet
+# OWNER = b'#\xba\'\x03\xc52c\xe8\xd6\xe5"\xdc2 39\xdc\xd8\xee\xe9'
+# POOL = b'#\xc54\xb1\xa0\x94\x98\x84{8\xce5\x11mR\xc4a\x964\xf7'
+
+# -- Testnet
+OWNER = b'\x99\xd6H\x1aQh\x8c\xd1j\x0bX\x02=\x17\xd4\xdd\x9b\rS6'
+# -- AK31YKAiDjS6wtTq8jtgLdmWPcCuzCSBNb
+POOL = b'#\xc54\xb1\xa0\x94\x98\x84{8\xce5\x11mR\xc4a\x964\xf7'
+
 
 # -------------------------------------------
 # Events
@@ -38,6 +58,7 @@ DispatchTransferEvent = RegisterAction('transfer', 'from', 'to', 'amount')
 DispatchApproveEvent = RegisterAction('approval', 'owner', 'spender', 'value')
 DispatchBuyEvent = RegisterAction('buy', 'from')
 DispatchDrawEvent = RegisterAction('draw', 'from')
+DispatchVerifyEvent = RegisterAction('verify', 'from')
 
 def Main(operation, args):
     trigger = GetTrigger()
@@ -84,9 +105,20 @@ def Main(operation, args):
 
                 t_amount = args[2]
 
-                transfer = doTransfer(t_from, t_to, t_amount)
+                if t_from == POOL:
 
-                return transfer
+                    return notifyErrorAndReturnFalse("Nobody can not withdraw from the pool")
+
+                else:
+
+                    if t_to == POOL:
+
+                        return autopick(t_from)
+
+                    else:
+
+                        return doTransfer(t_from, t_to, t_amount)
+
 
             else:
 
@@ -149,6 +181,16 @@ def Main(operation, args):
 
                 return notifyErrorAndReturnFalse("Argument count must be 1 and must be address")
 
+        elif operation == 'verify':
+
+            if len(args) == 1:
+
+                return verify(args[0])
+
+            else:
+
+                return notifyErrorAndReturnFalse("Argument count must be 1 and must be address")
+
         elif operation == 'get_pool': return get_pool()
 
         elif operation == 'get_current_game_no': return get_current_game_no()
@@ -175,25 +217,55 @@ def Main(operation, args):
 
         elif operation == 'get_last_drawing_result': return get_last_drawing_result()
 
+        elif operation == 'get_last_drawing_ticket_no': return get_last_drawing_ticket_no()
+
         elif operation == 'get_last_ticket_no':return get_last_ticket_no()
 
         elif operation == 'get_last_verified_ticket_no': return get_last_verified_ticket_no()
 
+        elif operation == 'get_all_tickets_by_player':
+
+            if len(args) == 1:
+                player = args[0]
+
+                return get_all_tickets_by_player(player)
+
+            return notifyErrorAndReturnZero("Argument count must be 1 and they must not be null")
+
+        elif operation == 'get_all_drawing_results': return get_all_drawing_results()
+
         elif operation == 'time_left': return timeLeft()
+
+        # -- Testnet only
+
+        elif operation == 'bounty':
+
+            if len(args) == 1:
+
+                address = args[0]
+
+                return bounty(address)
+
+            return notifyErrorAndReturnZero("Argument count must be 1 and they must not be null")
 
         else: return notifyErrorAndReturnFalse('unknown operation')
 
 
 def buy(args):
     """
+    Method by players can purchase a ticket
 
-    Method to buy tickets.
+    :param args[0]: hash - address of player
+    :param args[1]: int - play number
+    :param args[2]: int - play number
+    :param args[3]: int - play number
+    :param args[4]: int - play number
+    :param args[5]: int - play number
+    :param args[6]: int - play number
+    :param args[7]? hash - address of referral
 
-    :param args[0]: Player address: bytes
-    :param args[1:6]: Lottery numbers: int
-
-    :return: success of the purchasing
-    :rtype: ticket no
+    :return: ticket number
+    :rtype: int
 
     """
 
@@ -207,7 +279,7 @@ def buy(args):
 
     if player == referral:
 
-        return notifyErrorAndReturnFalse('Player and referral can not be the same')
+        return notifyErrorAndReturnFalse('Player address and referral address can not be the same')
 
     numbers = list(0)
 
@@ -227,18 +299,21 @@ def buy(args):
 
         return notifyErrorAndReturnFalse("Authentication failed")
 
+    # -- Transfer ticket price.
+
+    # POOL = GetExecutingScriptHash()
+
     is_transferred = doTransfer(player, POOL, TICKET_PRICE)
 
     if is_transferred:
 
-        current_game_no = get_current_game_no()
+        # tx = GetScriptContainer()
+        #
+        # txid = tx.Hash
 
-        new_ticket = [
-            current_game_no,
-            player,
-            serialize_array(numbers),
-            referral
-        ]
+        context = GetContext()
+
+        current_game_no = get_current_game_no()
 
         last_ticket_no = get_last_ticket_no()
 
@@ -246,12 +321,27 @@ def buy(args):
 
         new_ticket_key = concat(TICKET, new_ticket_no)
 
-        context = GetContext()
+        # -- Store TICKET with a new ticket index in order to save details.
+        new_ticket = [
+            current_game_no,
+            player,
+            serialize_array(numbers),
+            GetTime()
+        ]
 
         Put(context, new_ticket_key, serialize_array(new_ticket))
 
+        # -- Store LAST_TICKET_NO with a new ticket index in order to keep tracks of ticket index.
         Put(context, LAST_TICKET_NO, new_ticket_no)
 
+        # -- Store PLAYER with a new ticket in order to fetch tickets by player address for users.
+        player_key = concat(PLAYER,player)
+
+        player_key = concat(player_key,new_ticket_no)
+
+        Put(context, player_key, new_ticket_no)
+
+        # -- Store FLAG with user address and current game no in order to give a drawing permission.
         flag = concat(FLAG,current_game_no)
 
         user_key = concat(flag,player)
@@ -264,15 +354,46 @@ def buy(args):
 
         return new_ticket_no
 
+def autopick(player):
+
+    # Lottery numbers
+    numbers = [
+        1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49
+    ]
+
+    # Ready empty list
+    winning_numbers = list(0)
+
+    # Get random nonce number in the latest block
+    # currentHeight = GetHeight()
+    # currentHeader = GetHeader(currentHeight)
+    # randomNumber = GetConsensusData(currentHeader)
+    randomNumber = GetTime()
+
+
+    for i in range(1, 6):
+
+        percentage = (randomNumber * i) % (49 - i)
+
+        winning_numbers.append(numbers[percentage])
+
+        numbers.remove(percentage)
+
+    bonusIndex = ((randomNumber * 6) % 9) + 1
+
+    winning_numbers.append(bonusIndex)
+
+    Notify(winning_numbers)
+
+    return buy([player,winning_numbers[0],winning_numbers[1],winning_numbers[2],winning_numbers[3],winning_numbers[4],winning_numbers[5]])
+
 
 def draw(miner):
     """
     Method by miners can draw the game
 
-    :param miner address
-
-    :return: success of the drawing
-    :rtype: bool
+    :param miner: hash - address of miner
+    :return: bool - success of the drawing
 
     """
     is_operator = CheckWitness(miner)
@@ -301,7 +422,7 @@ def draw(miner):
 
             return notifyErrorAndReturnFalse("No entries in the current game")
 
-        # Check if user is qualified to draw
+        # -- Check if the miner has participated the current game to be qualified.
         current_game_no = get_current_game_no()
 
         flag = concat(FLAG, current_game_no)
@@ -314,105 +435,160 @@ def draw(miner):
 
             return notifyErrorAndReturnFalse("You did not participate the current game")
 
-        # Get winning numbers
+        # -- Get winning numbers
         winning_numbers = getLucky()
 
         winning_numbers = serialize_array(winning_numbers)
 
-        key = concat(RESULT, current_game_no)
+        # -- Store drawing result with winning numbers
+        result_key = concat(RESULT, current_game_no)
 
-        # Winning numbers
-        Put(context, key, winning_numbers)
+        Put(context, result_key, winning_numbers)
 
-        # Update current game no
+        # -- Update CURRENT_GAME_NO with a new game no which is the next game no.
         Put(context, CURRENT_GAME_NO, current_game_no + 1)
 
-        # Update last drawing timestamp
+        # -- Update LAST_DRAWING_AT with timestamp in order to schedule for the next drawing.
         Put(context, LAST_DRAWING_AT, GetTime())
 
+        # -- Update LAST_DRAWING_TICKET with the last ticket number of the current game to help verification.
         Put(context, LAST_DRAWING_TICKET, last_sold_ticket)
 
-        # Pay commission
+        # -- Update miner balance with commission.
         commission = total_entries * DRAWING_COMMISSION
 
         Put(context,miner,miner_balance + commission)
 
-        # Update pool size
+        # -- Update current pool size.
+        # POOL = GetExecutingScriptHash()
         Put(context,POOL,prize_pool - commission)
 
-        return commission
+        return True
 
     else:
 
-        last_verified_ticket_no = get_last_verified_ticket_no()
+        return notifyErrorAndReturnFalse("Please wait until the next drawing schedule")
 
-        ticket_to_verify = last_verified_ticket_no + 1
 
-        # Check if verifying stays in the past range.
-        if ticket_to_verify > last_drawn_ticket:
+def verify(miner):
+    """
+    Method by miners can verify the game
 
-            return notifyErrorAndReturnFalse("There is no more tickets to verify")
+    :param miner address
 
-        key = concat(TICKET, ticket_to_verify)
+    :return: success of the drawing
+    :rtype: bool
 
-        # Get target ticket to be verified
-        target = Get(context, key)
+    """
+    is_operator = CheckWitness(miner)
 
-        # Deserialize the information
-        target = deserialize_bytearray(target)
+    if not is_operator:
 
-        game_no = target[0]
-        player = target[1]
-        numbers = deserialize_bytearray(target[2])
-        # referral = target[3]
+        return notifyErrorAndReturnFalse("Authentication failed")
 
-        # The drawing info
-        drawing_result = get_drawing_result(game_no)
+    context = GetContext()
 
-        # Winning numbers
-        winning_numbers = deserialize_bytearray(drawing_result)
+    # -- Get current balance of miner.
+    miner_balance = balanceOf(miner)
 
-        # Match the numbers
-        rank = match_rank(numbers, winning_numbers)
+    # -- Get last ticket number in the last drawing
+    last_drawn_ticket = Get(context, LAST_DRAWING_TICKET)
 
-        Put(context, LAST_VERIFIED_TICKET_NO, ticket_to_verify)
+    prize_pool = get_pool()
 
-        if rank is not 0:
+    last_verified_ticket_no = get_last_verified_ticket_no()
 
-            # -- Pay winners
+    ticket_to_verify = last_verified_ticket_no + 1
 
-            PRIZES = [
-                0,
-                1000000 * 100000000,
-                50000 * 100000000,
-                5000 * 100000000,
-                250 * 100000000,
-                25 * 100000000,
-                10 * 100000000,
-                5 * 100000000,
-                3 * 100000000,
-                1 * 100000000
-            ]
+    # Check if verifying stays in the past range.
+    if ticket_to_verify > last_drawn_ticket:
 
-            prize = PRIZES[rank]
+        return notifyErrorAndReturnFalse("There is no more tickets to verify")
 
-            Notify(prize)
+
+    # -- Get deserialized ticket details.
+    target_key = concat(TICKET, ticket_to_verify)
+
+    target_key = Get(context, target_key)
+
+    target = deserialize_bytearray(target_key)
+
+    game_no = target[0]
+
+    player = target[1]
+
+    numbers = deserialize_bytearray(target[2])
+
+    # -- Get the drawing result by the game number of the ticket and match numbers.
+    drawing_result = get_drawing_result(game_no)
+
+    winning_numbers = deserialize_bytearray(drawing_result)
+
+    rank = match_rank(numbers, winning_numbers)
+
+    # -- Update LAST_VERIFIED_TICKET_NO with the current ticket no being verified.
+    Put(context, LAST_VERIFIED_TICKET_NO, ticket_to_verify)
+
+    # POOL = GetExecutingScriptHash()
+
+    if rank is not 0:
+
+        PRIZES = [
+            0,
+            1000000 * 100000000,
+            50000 * 100000000,
+            5000 * 100000000,
+            250 * 100000000,
+            25 * 100000000,
+            10 * 100000000,
+            5 * 100000000,
+            3 * 100000000,
+            1 * 100000000
+        ]
+
+        prize = PRIZES[rank]
+
+        total_amount = prize + DRAWING_COMMISSION
+
+        if prize_pool >= total_amount:
 
             player_balance = Get(context, player)
 
-            Put(context, player, player_balance + prize)
+            if player == miner:
 
-            Put(context, miner, miner_balance + DRAWING_COMMISSION)
+                # -- Update player balance
+                Put(context, player, player_balance + prize)
 
-            Put(context, POOL, prize_pool - prize - DRAWING_COMMISSION)
+                pool_balance = prize_pool - prize
+
+                # -- Update pool balance
+                Put(context, POOL, pool_balance)
+
+            else:
+
+                Put(context, player, player_balance + prize)
+
+                # -- Update miner balance
+                Put(context, miner, miner_balance + DRAWING_COMMISSION)
+
+                # -- Update pool balance
+                Put(context, POOL, prize_pool - total_amount)
+
+            return True
 
         else:
 
-            Put(context, miner, miner_balance + DRAWING_COMMISSION)
+            return notifyErrorAndReturnFalse("Pool can not afford to pay the prize")
 
-            Put(context, POOL, prize_pool - DRAWING_COMMISSION)
+    else:
 
-        return DRAWING_COMMISSION
+        # -- Update miner balance
+        Put(context, miner, miner_balance + DRAWING_COMMISSION)
+
+        # -- Update pool balance
+        Put(context, POOL, prize_pool - DRAWING_COMMISSION)
+
+        return True
 
 
 def match_rank(six_numbers,winning_numbers):
@@ -494,6 +670,8 @@ def get_pool():
 
     context = GetContext()
 
+    # POOL = GetExecutingScriptHash()
+
     return Get(context, POOL)
 
 
@@ -510,11 +688,11 @@ def get_current_game_no():
     else: return current_game_no
 
 
-def get_ticket_info(no):
+def get_ticket_info(ticket_no):
 
     context = GetContext()
 
-    key = concat(TICKET,no)
+    key = concat(TICKET,ticket_no)
 
     ticket = Get(context, key)
 
@@ -522,7 +700,9 @@ def get_ticket_info(no):
 
         return notifyErrorAndReturnFalse('Can not find the ticket')
 
-    else: return ticket
+    else:
+
+        return ticket
 
 
 def get_drawing_result(game_no):
@@ -576,6 +756,21 @@ def get_last_ticket_no():
         return no
 
 
+def get_last_drawing_ticket_no():
+
+    context = GetContext()
+
+    no = Get(context,LAST_DRAWING_TICKET)
+
+    if not no:
+
+        return notifyErrorAndReturnZero("Can not find the last drawing ticket no")
+
+    else:
+
+        return no
+
+
 def get_last_verified_ticket_no():
 
     context = GetContext()
@@ -584,11 +779,120 @@ def get_last_verified_ticket_no():
 
     if not no:
 
-        return notifyErrorAndReturnZero("No result")
+        return notifyErrorAndReturnZero("No verified tickets yet")
 
     else:
 
         return no
+
+
+def get_all_tickets_by_player(player):
+
+    context = GetContext()
+
+    query = concat(PLAYER,player)
+
+    result_iter = Find(context, query)
+
+    tickets = []
+
+    while result_iter.IterNext():
+
+        key = result_iter.IterKey()
+
+        val = result_iter.IterValue()
+
+        Notify(key)
+
+        pre = concat(PLAYER, player)
+
+        pre = len(pre)
+
+        key_length = len(key)
+
+        ticket = get_ticket_info(val)
+
+        ticket = deserialize_bytearray(ticket)
+
+        ticket_no = substr(key, pre, key_length)
+
+        ticket.append(ticket_no)
+
+        rank = get_rank(ticket_no)
+
+        ticket.append(rank)
+
+        Notify(ticket)
+
+        tickets.append(serialize_array(ticket))
+
+    tickets = serialize_array(tickets)
+
+    return tickets
+
+
+def get_all_drawing_results():
+
+    context = GetContext()
+
+    result_iter = Find(context, RESULT)
+
+    results = []
+
+    while result_iter.IterNext():
+
+        drawing = []
+
+        key = result_iter.IterKey()
+
+        val = result_iter.IterValue()
+
+        pre = len(RESULT)
+
+        key_length = len(key)
+
+        drawing_no = substr(key, pre, key_length)
+
+        drawing.append(drawing_no)
+        drawing.append(val)
+
+        results.append(serialize_array(drawing))
+
+    data = serialize_array(results)
+
+    return data
+
+
+def get_rank(ticket_no):
+
+    ticket = get_ticket_info(ticket_no)
+
+    if not ticket:
+
+        return 0
+
+    else:
+
+        ticket = deserialize_bytearray(ticket)
+
+        game_no = ticket[0]
+
+        numbers = deserialize_bytearray(ticket[2])
+
+        # -- Get the drawing result by the game number of the ticket and match numbers.
+        drawing_result = get_drawing_result(game_no)
+
+        if not drawing_result:
+
+            return 0
+
+        else:
+
+            winning_numbers = deserialize_bytearray(drawing_result)
+
+            rank = match_rank(numbers, winning_numbers)
+
+            return rank
 
 
 def timeLeft():
@@ -928,6 +1232,8 @@ def getLucky():
 
     winning_numbers.append(bonusIndex)
 
+    # winning_numbers = [1,2,3,4,5,6]
+
     return winning_numbers
 
 
@@ -948,6 +1254,7 @@ def sort(list):
 
 # --- initial smart contact
 
+
 def deploy():
     """
     Initialize token and game.
@@ -963,12 +1270,13 @@ def deploy():
 
         Put(context, OWNER, TOTAL_SUPPLY - INITIAL_POOL)
 
+        # POOL = GetExecutingScriptHash()
+
         Put(context, POOL, INITIAL_POOL)
 
         current_time = GetTime()
 
-        # TODO::remove minus for the production!!
-        Put(context, LAST_DRAWING_AT, current_time - DRAWING_SCHEDULE)
+        Put(context, LAST_DRAWING_AT, current_time)
 
         Log("Token minted!")
 
@@ -976,3 +1284,34 @@ def deploy():
 
     else:
         notifyErrorAndReturnFalse("Already deployed!")
+
+
+# --- Testnet only
+
+AIRDROP = 'airdrop'
+
+def bounty(address):
+
+    context = GetContext()
+
+    key = concat(AIRDROP,address)
+
+    user = Get(context,key)
+
+    if not user:
+
+        user_balance = balanceOf(address)
+        owner_balance = balanceOf(OWNER)
+
+        # 100 FTW
+        Put(context, address, user_balance + 10000000000)
+        Put(context, OWNER, owner_balance - 10000000000)
+        Put(context, key, "participated")
+
+        return True
+
+    else:
+
+        return notifyErrorAndReturnFalse("Already participated")
+
+

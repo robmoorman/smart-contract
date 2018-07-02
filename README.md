@@ -6,7 +6,7 @@
 
 <h1>FTW Smart contact</h1>
 <p>
-  The first decentralized blockchain lottery based on NEO
+  The first pure decentralized blockchain lottery based on NEO
 </p>
 
 ## Philosophy 
@@ -25,7 +25,7 @@ Players buy lottery tickets.
 
 ##### Miners
 
-Miners draw the lottery, verify and distribute prizes to winners. Rewards are: 
+Miners draw the lottery, verify and distribute prizes to winners. Miners earn commissions.
 
 ## Game rules
 
@@ -51,18 +51,18 @@ People can participate to draw the lottery and distribute prizes. It is kinds of
 
 ##### Drawing
 
-Everybody can trigger the smart contract to draw the current game after a day (timestamp: 86400) from the last drawing.
+Users can trigger the smart contract to draw the current game after it passes 1 day (timestamp: 86400) from the last drawing.
 
-- Reward: 10% of ticket sales of the game
-- Requirement: Must buy at least 1 ticket
-- Only 1 person per game
+- Reward: 5% of total ticket sales of the game
+- Must buy at least 1 ticket to be qualified to participate
+- First come First served
 
 ##### Verifying
 
-The trigger will verify a ticket if there is no game to draw.
+The trigger will verify tickets.
 
-- Reward: 10% of a ticket.
-- No requirement
+- Reward: 5% of a ticket.
+- No requirement to participate
 
 ## Winning numbers
 
@@ -103,6 +103,16 @@ draw(address)
 
 draw("AK2nJJpJr6o664CWJKi1QRXjqeic2zRp8y")
 ```
+
+verify(address)
+
+```
+# -- Example
+
+@param address:string - applicant address (required)
+
+draw("AK2nJJpJr6o664CWJKi1QRXjqeic2zRp8y")
+```
 get_pool()<br/>
 get_current_game_no()<br/>
 time_left()<br/>
@@ -111,3 +121,5 @@ get_last_verified_ticket_no()<br/>
 get_last_drawing_result()<br/>
 get_ticket_info(no)<br/>
 get_drawing_result(no)<br/>
+get_all_tickets_by_player(address)<br/>
+get_all_drawing_results_()<br/>
