@@ -1,50 +1,58 @@
 from boa.interop.Neo.Action import RegisterAction
 from boa.interop.Neo.Header import GetConsensusData
-from boa.interop.Neo.Blockchain import GetHeight, GetHeader
+from boa.interop.Neo.Blockchain import GetHeight, GetHeader, GetTransaction
 from boa.interop.Neo.TriggerType import Verification, Application
-from boa.interop.Neo.Runtime import Log, CheckWitness, GetTrigger, GetTime
-from boa.builtins import concat, list, range, has_key, substr
+from boa.interop.Neo.Runtime import Log, Notify, CheckWitness, GetTrigger, GetTime
+from boa.builtins import concat, list, range, has_key, substr, sha1, hash160, take
 from boa.interop.Neo.Storage import Get, Put, GetContext, Delete, Find
 from boa.interop.System.ExecutionEngine import GetScriptContainer, GetCallingScriptHash, GetEntryScriptHash, GetExecutingScriptHash
 from boa.interop.Neo.Iterator import IterNext, IterKey, IterValue, IterValues
+
+# Check list
+# -- Is Drawing schedule correct?
+# -- Is Winning number correct?
+# -- Is Owner and pool address correct?
+# -- Is Testnet only methods are deleted?
 
 # -- Lottery variables
 PLAYER = 'player'
 OPERATOR = 'operator'
 VERIFIER = 'verifier'
 TICKET = 'ticket'
-WINNING_NUMBERS = 'winning_numbers'
+RESULT = 'result'
 FLAG = 'flag'
 CURRENT_GAME_NO = 'current_game_no'
 LAST_TICKET_NO = "last_ticket_no"
 LAST_VERIFIED_TICKET_NO = "last_verified_ticket_no"
 LAST_DRAWING_AT = 'last_drawing_at'
-LAST_DRAWING_TICKET = 'last_drawing_ticket_no'
-DEPLOYED_AT = "deployed_at"
+LAST_DRAWING_TICKET = 'last_drawing_ticket'
 LAUNCHED_AT = "launched_at"
-DRAWING_SCHEDULE = 43200
-TICKET_PRICE = 100000000  # 1FTW
+DRAWING_SCHEDULE = 1
+# DRAWING_SCHEDULE = 86400
+TICKET_PRICE = 1 * 100000000  # 1 FTW
 DRAWING_COMMISSION = 5000000  # 5% of TICKET_PRICE
+JACKPOT_PERCENTAGE = 60
 INITIAL_POOL = 5000000 * 100000000  # 5m FTW
 
+
 # -- NEP5 variables
-TOKEN_NAME = 'For The Win'
+TOKEN_NAME = 'FTW Token'
 SYMBOL = 'FTW'
 DECIMALS = 8
 TOTAL_SUPPLY = 100000000 * 100000000  # 100m total supply * 10^8 (decimals)
 
-# -- MainNet
+# # -- MainNet
+# OWNER = b'\xdc\xf3\xca\xef\xf9\xbb;\xf1\xf0?\xbb\x18\x81\x9cj\xba\x98r\xdc\xe4'  # AbvAMiWRib6GzGZKU1o8QxUntnzhCwjXdS
+# POOL = b'<R\xe3\x1d\x07\nX\x174\x97\x17\xa6V*\x0c\xa2>\xa6\xe2\xeb'  # AMGqV7HJFrvxnXxVCzUjEcw4Gv3mdGReiF
 
-OWNER = b'\xdc\xf3\xca\xef\xf9\xbb;\xf1\xf0?\xbb\x18\x81\x9cj\xba\x98r\xdc\xe4'  # AbvAMiWRib6GzGZKU1o8QxUntnzhCwjXdS
-POOL = b'<R\xe3\x1d\x07\nX\x174\x97\x17\xa6V*\x0c\xa2>\xa6\xe2\xeb'  # AMGqV7HJFrvxnXxVCzUjEcw4Gv3mdGReiF
+# -- PrivateNet
+OWNER = b'#\xba\'\x03\xc52c\xe8\xd6\xe5"\xdc2 39\xdc\xd8\xee\xe9'  # AK2nJJpJr6o664CWJKi1QRXjqeic2zRp8y
+POOL = b'#\xc54\xb1\xa0\x94\x98\x84{8\xce5\x11mR\xc4a\x964\xf7'   # AK31YKAiDjS6wtTq8jtgLdmWPcCuzCSBNb
 
 # # -- TestNet
-DRAWING_SCHEDULE = 120
-OWNER = b'\x99\xd6H\x1aQh\x8c\xd1j\x0bX\x02=\x17\xd4\xdd\x9b\rS6'
-
-# # -- PrivateNet
-DRAWING_SCHEDULE = 5
-OWNER = b'#\xba\'\x03\xc52c\xe8\xd6\xe5"\xdc2 39\xdc\xd8\xee\xe9'  # AK2nJJpJr6o664CWJKi1QRXjqeic2zRp8y
+# OWNER = b'\x99\xd6H\x1aQh\x8c\xd1j\x0bX\x02=\x17\xd4\xdd\x9b\rS6'
+# # -- AK31YKAiDjS6wtTq8jtgLdmWPcCuzCSBNb
+# POOL = b'#\xc54\xb1\xa0\x94\x98\x84{8\xce5\x11mR\xc4a\x964\xf7'
 
 
 # -------------------------------------------
@@ -57,12 +65,11 @@ DispatchTransferEvent = RegisterAction('transfer', 'from', 'to', 'amount')
 # Events FTW
 # -------------------------------------------
 
-DispatchBuyEvent = RegisterAction('buy', 'from', 'ticket_no', 'no_1', 'no_2', 'no_3', 'no_4', 'no_5')
-DispatchDrawEvent = RegisterAction('draw', 'from', 'game_no')
-DispatchVerifyEvent = RegisterAction('verify', 'from', 'ticket_no')
+# DispatchBuyEvent = RegisterAction('buy', 'from', 'no_1', 'no_2', 'no_3', 'no_4', 'no_5')
+# DispatchDrawEvent = RegisterAction('draw', 'from')
+# DispatchVerifyEvent = RegisterAction('verify', 'from')
 
 def Main(operation, args):
-
     trigger = GetTrigger()
 
     if trigger == Verification():
@@ -70,7 +77,6 @@ def Main(operation, args):
         is_owner = CheckWitness(OWNER)
 
         if is_owner:
-
             return True
 
         return False
@@ -115,30 +121,14 @@ def Main(operation, args):
             if len(args) == 3:
 
                 t_from = args[0]
-
                 t_to = args[1]
-
                 amount = args[2]
 
                 if t_to == POOL:
 
                     if amount == 100000000:
-
                         Log("Autopick entry")
-
                         return autopick(t_from)
-
-                    if amount == 200000000:
-
-                        Log("Drawing entry")
-
-                        return draw(t_from)
-
-                    if amount == 300000000:
-
-                        Log("Verifying entry")
-
-                        return verify(t_from)
 
                 return do_transfer(t_from, t_to, amount)
 
@@ -148,43 +138,24 @@ def Main(operation, args):
 
         # -- FTW
 
-        elif operation == 'launch':
-
-            return launch()
-
         elif operation == 'buy':
 
             player = args[0]
 
-            if len(args) == 6:
+            if len(args) == 7:
 
                 numbers = list(0)
 
-                five_number_dict = {}
+                for i in range(1, 7):
 
-                for i in range(1, 6):
+                    if args[i] < 50:
+                        numbers.append(args[i])
 
-                    if has_key(five_number_dict, args[i]):
-
-                        return notifyErrorAndReturnFalse('Invalid lottery numbers')
-
-                    five_number_dict[args[i]] = "1"
-
-                    if args[i] == 0:
-
-                        return notifyErrorAndReturnFalse('Invalid lottery numbers')
-
-                    if args[i] > 39:
-
-                        return notifyErrorAndReturnFalse('Invalid lottery numbers')
-
-                    numbers.append(args[i])
-
-                if len(numbers) != 5:
+                if len(numbers) != 6:
 
                     return notifyErrorAndReturnFalse('Invalid lottery numbers')
 
-                return buy(player, numbers)
+                return buy(player,numbers)
 
             return False
 
@@ -192,9 +163,7 @@ def Main(operation, args):
 
             if len(args) == 1:
 
-                account = args[0]
-
-                return draw(account)
+                return draw(args[0])
 
             else:
 
@@ -204,9 +173,7 @@ def Main(operation, args):
 
             if len(args) == 1:
 
-                account = args[0]
-
-                return verify(account)
+                return verify(args[0])
 
             else:
 
@@ -224,13 +191,21 @@ def Main(operation, args):
 
             if len(args) == 1:
 
-                ticket_no = args[0]
-
-                return get_ticket_info(ticket_no)
+                return get_ticket_info(args[0])
 
             else:
 
                 return notifyErrorAndReturnFalse("Argument count must be 1 and must be address")
+
+        elif operation == 'get_drawing_result':
+
+            if len(args) == 1:
+
+                game_no = args[0]
+
+                return get_drawing_result(game_no)
+
+            return notifyErrorAndReturnZero("Argument count must be 1 and they must not be null")
 
         elif operation == 'get_last_ticket_no':
 
@@ -244,57 +219,42 @@ def Main(operation, args):
 
             return get_last_drawing_ticket_no()
 
-        elif operation == 'get_last_drawing_at':
 
-            return get_last_drawing_at()
+        elif operation == 'get_all_tickets':
 
-        elif operation == 'has_user_participated':
+            return get_all_tickets()
 
-            if len(args) == 1:
+        elif operation == 'get_all_drawing_results':
 
-                account = args[0]
+            return get_all_drawing_results()
 
-                return has_user_participated(account)
+        elif operation == 'get_all_operators':
 
-            return notifyErrorAndReturnFalse("Argument count must be 1 and they must not be null")
+            return get_all_operators()
 
-        elif operation == 'is_verifying_open':
+        elif operation == 'get_all_verifiers':
 
-            return is_verifying_open()
-
-        elif operation == 'is_drawing_open':
-
-            if len(args) == 1:
-
-                account = args[0]
-
-                return is_drawing_open(account)
-
-            return notifyErrorAndReturnFalse("Argument count must be 1 and they must not be null")
-
-        elif operation == 'get_time_left':
-
-            return get_time_left()
+            return get_all_verifiers()
 
         elif operation == 'get_all_tickets_by_player':
 
             if len(args) == 1:
-
                 player = args[0]
 
                 return get_all_tickets_by_player(player)
 
             return notifyErrorAndReturnZero("Argument count must be 1 and they must not be null")
 
+
         elif operation == 'get_all_operators_by_player':
 
             if len(args) == 1:
-
                 account = args[0]
 
                 return get_all_operators_by_player(account)
 
             return notifyErrorAndReturnZero("Argument count must be 1 and they must not be null")
+
 
         elif operation == 'get_all_verifiers_by_player':
 
@@ -306,17 +266,38 @@ def Main(operation, args):
 
             return notifyErrorAndReturnZero("Argument count must be 1 and they must not be null")
 
-        elif operation == 'get_all_tickets':
 
-            return get_all_tickets()
+        elif operation == 'has_user_participated':
 
-        elif operation == 'get_all_drawings':
+            if len(args) == 1:
 
-            return get_all_drawings()
+                account = args[0]
 
-        elif operation == 'get_all_verifying':
+                return has_user_participated(account)
 
-            return get_all_verifying()
+            return notifyErrorAndReturnFalse("Argument count must be 1 and they must not be null")
+
+
+        elif operation == 'is_verifying_open':
+
+            return is_verifying_open()
+
+
+        elif operation == 'get_time_left':
+
+            return get_time_left()
+
+        # -- Testnet only TODO::remove for mainnet
+
+        elif operation == 'bounty':
+
+            if len(args) == 1:
+
+                address = args[0]
+
+                return bounty(address)
+
+            return notifyErrorAndReturnZero("Argument count must be 1 and they must not be null")
 
         else:
 
@@ -325,24 +306,21 @@ def Main(operation, args):
 
 def buy(player, numbers):
 
-    context = GetContext()
-
-    current_game_no = Get(context, CURRENT_GAME_NO)
-
-    if not current_game_no:
-
-        return notifyErrorAndReturnFalse("The game has not been launched yet")
-
     is_transferred = do_transfer(player, POOL, TICKET_PRICE)
 
     if is_transferred:
 
-        last_ticket_no = Get(context, LAST_TICKET_NO)
+        context = GetContext()
+
+        current_game_no = get_current_game_no()
+
+        last_ticket_no = get_last_ticket_no()
 
         new_ticket_no = last_ticket_no + 1
 
         new_ticket_key = concat(TICKET, new_ticket_no)
 
+        # -- Store TICKET with a new ticket index in order to save details.
         new_ticket = [
             current_game_no,
             player,
@@ -352,8 +330,10 @@ def buy(player, numbers):
 
         Put(context, new_ticket_key, serialize_array(new_ticket))
 
+        # -- Store LAST_TICKET_NO with a new ticket index in order to keep tracks of ticket index.
         Put(context, LAST_TICKET_NO, new_ticket_no)
 
+        # -- Store PLAYER with a new ticket in order to fetch tickets by player address for users.
         player_key = concat(PLAYER, player)
 
         player_key = concat(player_key, current_game_no)
@@ -368,8 +348,6 @@ def buy(player, numbers):
 
         Put(context, player_key, new_ticket_no)
 
-        DispatchBuyEvent(player, new_ticket_no, numbers[0], numbers[1], numbers[2], numbers[3], numbers[4])
-
         return True
 
     return False
@@ -377,30 +355,31 @@ def buy(player, numbers):
 
 def autopick(player):
 
+    # Lottery numbers
     samples = [
-        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39
+        1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49
     ]
 
-    numbers = []
-
+    # Ready empty list
+    numbers = list(0)
     randomNumber = GetTime()
 
     for i in range(1, 6):
 
-        percentage = (randomNumber * i) % (39 - i)
+        percentage = (randomNumber * i) % (49 - i)
 
         numbers.append(samples[percentage])
 
         samples.remove(percentage)
 
+    bonusIndex = ((randomNumber * 6) % 9) + 1
+
+    numbers.append(bonusIndex)
+
     return buy(player,numbers)
 
 
 def draw(miner):
-
-    if len(miner) != 20:
-
-        return notifyErrorAndReturnFalse("From should be 20-byte addresses")
 
     is_operator = CheckWitness(miner)
 
@@ -412,31 +391,15 @@ def draw(miner):
 
     miner_balance = balanceOf(context, miner)
 
-    prize_pool = Get(context, POOL)
+    prize_pool = get_pool()
 
-    current_game_no = Get(context, CURRENT_GAME_NO)
-
-    if current_game_no == 1:
-
-        key = LAST_DRAWING_AT
-
-    else:
-
-        key = concat(LAST_DRAWING_AT, current_game_no - 1)
-
-    last_drawing_at = Get(context, key)
-
-    now = GetTime()
-
-    time_left = now - (last_drawing_at + DRAWING_SCHEDULE)
+    time_left = get_time_left()
 
     if (time_left > 0):
 
-        last_sold_ticket = Get(context, LAST_TICKET_NO)
+        last_sold_ticket = get_last_ticket_no()
 
-        last_drawn_ticket_key = concat(LAST_DRAWING_TICKET, current_game_no - 1)
-
-        last_drawn_ticket = Get(context, last_drawn_ticket_key)
+        last_drawn_ticket = get_last_drawing_ticket_no()
 
         total_entries = last_sold_ticket - last_drawn_ticket
 
@@ -447,6 +410,8 @@ def draw(miner):
         commission = total_entries * DRAWING_COMMISSION
 
         # -- Get last drawing result
+
+        current_game_no = get_current_game_no()
 
         flag_key = concat(PLAYER, miner)
 
@@ -463,43 +428,30 @@ def draw(miner):
         # -- Get winning numbers and Store
         winning_numbers = getLucky()
 
-        result_key = concat(WINNING_NUMBERS, current_game_no)
-
-        Put(context, result_key, winning_numbers)
-
-        current_time = GetTime()
+        result_key = concat(RESULT, current_game_no)
+        Put(context, result_key, serialize_array(winning_numbers))
 
         # -- Miner info
         operator_key = concat(OPERATOR, miner)
-
         operator_key = concat(operator_key, current_game_no)
-
-        Put(context, operator_key, current_time)
+        Put(context, operator_key, total_entries)
 
         # -- Update LAST_DRAWING_AT with timestamp in order to schedule for the next drawing.
-        drawing_timestamp_key = concat(LAST_DRAWING_AT, current_game_no)
-
-        Put(context, drawing_timestamp_key, current_time)
+        Put(context, LAST_DRAWING_AT, GetTime())
 
         # -- Update LAST_DRAWING_TICKET with the last ticket number of the current game to help verification.
-        last_drawing_ticket_no_key = concat(LAST_DRAWING_TICKET, current_game_no)
-
-        Put(context, last_drawing_ticket_no_key, last_sold_ticket)
+        Put(context, LAST_DRAWING_TICKET, last_sold_ticket)
 
         # -- Update CURRENT_GAME_NO with a new game no which is the next game no.
         Put(context, CURRENT_GAME_NO, current_game_no + 1)
 
-        if prize_pool >= commission:
+        # -- Update miner balance with commission.
+        Put(context, miner, miner_balance + commission)
 
-            # -- Update miner balance with commission.
-            Put(context, miner, miner_balance + commission)
+        # -- Update current pool size.
+        Put(context, POOL, prize_pool - commission)
 
-            # -- Update current pool size.
-            Put(context, POOL, prize_pool - commission)
-
-            DispatchTransferEvent(POOL, miner, commission)
-
-            DispatchDrawEvent(miner, current_game_no)
+        DispatchTransferEvent(POOL, miner, commission)
 
         return True
 
@@ -509,10 +461,6 @@ def draw(miner):
 
 
 def verify(miner):
-
-    if len(miner) != 20:
-
-        return notifyErrorAndReturnFalse("From should be 20-byte addresses")
 
     is_operator = CheckWitness(miner)
 
@@ -524,25 +472,21 @@ def verify(miner):
 
     miner_balance = balanceOf(context, miner)
 
-    if miner_balance < 100000000000:
+    prize_pool = get_pool()
 
-        return notifyErrorAndReturnFalse("Verifier must have more than 1000FTW")
-
-    prize_pool = Get(context, POOL)
-
-    last_verified_ticket_no = Get(context, LAST_VERIFIED_TICKET_NO)
+    last_verified_ticket_no = get_last_verified_ticket_no()
 
     ticket_to_verify = last_verified_ticket_no + 1
 
     last_drawing_ticket = get_last_drawing_ticket_no()
 
+    # Check if verifying stays in the past range.
     if ticket_to_verify > last_drawing_ticket:
-
         return notifyErrorAndReturnFalse("There are no more tickets to verify")
 
-    ticket_key = concat(TICKET, ticket_to_verify)
+    # -- Get deserialized ticket details.
 
-    ticket = Get(context, ticket_key)
+    ticket = get_ticket_info(ticket_to_verify)
 
     target = deserialize_bytearray(ticket)
 
@@ -552,72 +496,75 @@ def verify(miner):
 
     numbers = deserialize_bytearray(target[2])
 
-    drawing_result_key = concat(WINNING_NUMBERS, game_no)
-
-    drawing_result = Get(context, drawing_result_key)
+    # -- Get the drawing result by the game number of the ticket and match numbers.
+    drawing_result = get_drawing_result(game_no)
 
     winning_numbers = deserialize_bytearray(drawing_result)
 
     rank = match_rank(numbers, winning_numbers)
 
+    # -- Update LAST_VERIFIED_TICKET_NO with the current ticket no being verified.
+
+    Put(context, LAST_VERIFIED_TICKET_NO, ticket_to_verify)
+
+    # -- Update verifier
+    verifier_key = concat(VERIFIER, miner)
+
+    verifier_key = concat(verifier_key, ticket_to_verify)
+
+    Put(context, verifier_key, GetTime())
+
     if rank is not 0:
 
-        prize = 0
-        reward = 0
+        PRIZES = [
+            0,
+            (prize_pool * JACKPOT_PERCENTAGE) / 100,
+            5000000000000,
+            500000000000,
+            25000000000,
+            2500000000,
+            1000000000,
+            500000000,
+            300000000,
+            100000000
+        ]
 
-        if rank == 1:
-            prize = 6000000000000
-            reward = 300000000000
+        prize = PRIZES[rank]
 
-        if rank == 2:
-            prize = 70000000000
-            reward = 3500000000
+        total_amount = prize + DRAWING_COMMISSION
 
-        if rank == 3:
-            prize = 3000000000
-            reward = 150000000
-
-        if rank == 4:
-            prize = 300000000
-            reward = 15000000
-
-        total_amount = prize + reward
-
-        if prize_pool >= prize:
+        if prize_pool >= total_amount:
 
             player_balance = Get(context, player)
 
-            if prize_pool >= total_amount:
+            if player == miner:
 
-                if player == miner:
+                # -- Update player balance
+                Put(context, player, player_balance + total_amount)
 
-                    Put(context, player, player_balance + total_amount)
+                # -- Update pool balance
+                pool_balance = prize_pool - total_amount
 
-                    Put(context, POOL, prize_pool - total_amount)
+                Put(context, POOL, pool_balance)
 
-                    DispatchTransferEvent(POOL, player, total_amount)
-
-                else:
-
-                    Put(context, player, player_balance + prize)
-
-                    Put(context, miner, miner_balance + reward)
-
-                    Put(context, POOL, prize_pool - total_amount)
-
-                    DispatchTransferEvent(POOL, player, player_balance + prize)
-
-                    DispatchTransferEvent(POOL, miner, reward)
+                DispatchTransferEvent(POOL,player,total_amount)
 
             else:
 
+                # -- Update player balance
                 Put(context, player, player_balance + prize)
 
-                Put(context, POOL, prize_pool - prize)
+                # -- Update miner balance
+                Put(context, miner, miner_balance + DRAWING_COMMISSION)
+
+                # -- Update pool balance
+                Put(context, POOL, prize_pool - total_amount)
 
                 DispatchTransferEvent(POOL, player, player_balance + prize)
 
-            DispatchVerifyEvent(miner, ticket_to_verify)
+                DispatchTransferEvent(POOL, miner, DRAWING_COMMISSION)
+
+            return True
 
         else:
 
@@ -625,30 +572,139 @@ def verify(miner):
 
     else:
 
-        if prize_pool >= DRAWING_COMMISSION:
+        # -- Update miner balance
+        Put(context, miner, miner_balance + DRAWING_COMMISSION)
 
-            # -- Update miner balance
-            Put(context, miner, miner_balance + DRAWING_COMMISSION)
+        # -- Update pool balance
+        Put(context, POOL, prize_pool - DRAWING_COMMISSION)
 
-            # -- Update pool balance
-            Put(context, POOL, prize_pool - DRAWING_COMMISSION)
+        return True
 
-            DispatchTransferEvent(POOL, miner, DRAWING_COMMISSION)
+# def verify1(miner):
+#
+#     is_operator = CheckWitness(miner)
+#
+#     if not is_operator:
+#
+#         return notifyErrorAndReturnFalse("Authentication failed")
+#
+#     # -- Get current balance of miner.
+#     miner_balance = balanceOf(miner)
+#
+#     # -- Get last ticket number in the last drawing
+#     last_drawn_ticket = get_last_drawing_ticket_no()
+#
+#     prize_pool = get_pool()
+#
+#     last_verified_ticket_no = get_last_verified_ticket_no()
+#
+#     ticket_to_verify = last_verified_ticket_no + 1
+#
+#     # Check if verifying stays in the past range.
+#     if ticket_to_verify > last_drawn_ticket:
+#
+#         return notifyErrorAndReturnFalse("There is no more tickets to verify")
+#
+#     context = GetContext()
+#
+#     # -- Get deserialized ticket details.
+#     target_key = concat(TICKET, ticket_to_verify)
+#
+#     target_key = Get(context, target_key)
+#
+#     target = deserialize_bytearray(target_key)
+#
+#     game_no = target[0]
+#
+#     player = target[1]
+#
+#     numbers = deserialize_bytearray(target[2])
+#
+#     # -- Get the drawing result by the game number of the ticket and match numbers.
+#     drawing_result = get_drawing_result(game_no)
+#
+#     winning_numbers = deserialize_bytearray(drawing_result)
+#
+#     rank = match_rank(numbers, winning_numbers)
+#
+#     # -- Update LAST_VERIFIED_TICKET_NO with the current ticket no being verified.
+#     Put(context, LAST_VERIFIED_TICKET_NO, ticket_to_verify)
+#
+#     # -- Update verifier
+#     verifier_key = concat(VERIFIER, miner)
+#
+#     verifier_key = concat(verifier_key,ticket_to_verify)
+#
+#     Put(context, verifier_key, GetTime())
+#
+#     if rank is not 0:
+#
+#         PRIZES = [
+#             0,
+#             1000000 * 100000000,
+#             50000 * 100000000,
+#             5000 * 100000000,
+#             250 * 100000000,
+#             25 * 100000000,
+#             10 * 100000000,
+#             5 * 100000000,
+#             3 * 100000000,
+#             1 * 100000000
+#         ]
+#
+#         prize = PRIZES[rank]
+#
+#         total_amount = prize + DRAWING_COMMISSION
+#
+#         if prize_pool >= total_amount:
+#
+#             player_balance = Get(context, player)
+#
+#             if player == miner:
+#
+#                 # -- Update player balance
+#                 Put(context, player, player_balance + total_amount)
+#
+#                 # -- Update pool balance
+#                 pool_balance = prize_pool - total_amount
+#
+#                 Put(context, POOL, pool_balance)
+#
+#                 DispatchTransferEvent(POOL,player,total_amount)
+#
+#             else:
+#
+#                 # -- Update player balance
+#                 Put(context, player, player_balance + prize)
+#
+#                 # -- Update miner balance
+#                 Put(context, miner, miner_balance + DRAWING_COMMISSION)
+#
+#                 # -- Update pool balance
+#                 Put(context, POOL, prize_pool - total_amount)
+#
+#                 DispatchTransferEvent(POOL, player, player_balance + prize)
+#
+#                 DispatchTransferEvent(POOL, miner, DRAWING_COMMISSION)
+#
+#             return True
+#
+#         else:
+#
+#             return notifyErrorAndReturnFalse("Pool can not afford to pay the prize")
+#
+#     else:
+#
+#         # -- Update miner balance
+#         Put(context, miner, miner_balance + DRAWING_COMMISSION)
+#
+#         # -- Update pool balance
+#         Put(context, POOL, prize_pool - DRAWING_COMMISSION)
+#
+#         return True
 
-            DispatchVerifyEvent(miner, ticket_to_verify)
 
-    Put(context, LAST_VERIFIED_TICKET_NO, ticket_to_verify)
-
-    verifier_key = concat(VERIFIER, miner)
-
-    verifier_key = concat(verifier_key, ticket_to_verify)
-
-    Put(context, verifier_key, GetTime())
-
-    return True
-
-
-def match_rank(numbers, winning_numbers):
+def match_rank(six_numbers, winning_numbers):
 
     rank = 0
 
@@ -656,31 +712,64 @@ def match_rank(numbers, winning_numbers):
 
     five_number_dict = {}
 
+    bonus_number = six_numbers[5]
+
+    winning_bonus_number = winning_numbers[5]
+
+    for i in range(0,5):
+        five_number_dict[six_numbers[i]] = "1"
+
     for i in range(0, 5):
 
-        five_number_dict[numbers[i]] = "1"
-
-    for i in range(0, 5):
-
-       if has_key(five_number_dict, winning_numbers[i]):
-
+       if has_key(five_number_dict,winning_numbers[i]):
            number_matched += 1
 
     if number_matched == 5:
 
-        rank = 1
+        if bonus_number == winning_bonus_number:
+
+            rank = 1
+
+        else:
+
+            rank = 2
 
     elif number_matched == 4:
 
-        rank = 2
+        if bonus_number == winning_bonus_number:
+
+            rank = 3
+
+        else:
+            rank = 4
 
     elif number_matched == 3:
 
-        rank = 3
+        if bonus_number == winning_bonus_number:
+
+            rank = 5
+
+        else:
+
+            rank = 6
 
     elif number_matched == 2:
 
-        rank = 4
+        if bonus_number == winning_bonus_number:
+
+            rank = 7
+
+    elif number_matched == 1:
+
+        if bonus_number == winning_bonus_number:
+
+            rank = 8
+
+    elif number_matched == 0:
+
+        if bonus_number == winning_bonus_number:
+
+            rank = 9
 
     return rank
 
@@ -739,11 +828,11 @@ def get_ticket_info(ticket_no):
         return ticket
 
 
-def get_winning_numbers(game_no):
+def get_drawing_result(game_no):
 
     context = GetContext()
 
-    key = concat(WINNING_NUMBERS, game_no)
+    key = concat(RESULT, game_no)
 
     result = Get(context, key)
 
@@ -760,11 +849,7 @@ def get_last_drawing_ticket_no():
 
     context = GetContext()
 
-    current_game_no = get_current_game_no()
-
-    key = concat(LAST_DRAWING_TICKET, current_game_no - 1)
-
-    no = Get(context, key)
+    no = Get(context, LAST_DRAWING_TICKET)
 
     if not no:
 
@@ -773,19 +858,6 @@ def get_last_drawing_ticket_no():
     else:
 
         return no
-
-
-def get_last_drawing_at():
-
-    context = GetContext()
-
-    current_game_no = get_current_game_no()
-
-    key = concat(LAST_DRAWING_AT, current_game_no - 1)
-
-    time = Get(context, key)
-
-    return time
 
 
 def get_last_verified_ticket_no():
@@ -836,7 +908,40 @@ def get_all_tickets():
     return serialize_array(tickets)
 
 
-def get_all_drawings():
+def get_all_drawing_results():
+
+    context = GetContext()
+
+    result_iter = Find(context, RESULT)
+
+    results = []
+
+    while result_iter.IterNext():
+
+        drawing = []
+
+        key = result_iter.IterKey()
+
+        winning_numbers = result_iter.IterValue()
+
+        pre = len(RESULT)
+
+        key_length = len(key)
+
+        drawing_no = substr(key, pre, key_length)
+
+        drawing.append(drawing_no)
+
+        drawing.append(winning_numbers)
+
+        results.append(serialize_array(drawing))
+
+    data = serialize_array(results)
+
+    return data
+
+
+def get_all_operators():
 
     context = GetContext()
 
@@ -852,37 +957,17 @@ def get_all_drawings():
 
         key = result_iter.IterKey()
 
-        created_at = result_iter.IterValue()
+        total_entries = result_iter.IterValue()
 
-        account = substr(key, pre, 20)
+        account = substr(key, pre, pre + 19)
 
-        game_no = substr(key, pre + 20, len(key) - (pre + 20))
-
-        # --- Get total entries of the game
-        previous_ticket = concat(LAST_DRAWING_TICKET, game_no - 1)
-
-        previous_ticket = Get(context, previous_ticket)
-
-        last_ticket = concat(LAST_DRAWING_TICKET, game_no)
-
-        last_ticket = Get(context, last_ticket)
-
-        total_entries = last_ticket - previous_ticket
-
-        # -- Get winning numbers
-
-        winning_numbers_key = concat(WINNING_NUMBERS, game_no)
-        winning_numbers = Get(context,winning_numbers_key)
+        game_no = substr(key, pre + 20, len(key))
 
         operator.append(game_no)
-
-        operator.append(winning_numbers)
 
         operator.append(account)
 
         operator.append(total_entries)
-
-        operator.append(created_at)
 
         operators.append(serialize_array(operator))
 
@@ -891,7 +976,15 @@ def get_all_drawings():
     return data
 
 
-def get_all_verifying():
+def get_all_verifiers():
+    """
+      :return: bytes
+      [
+          ticket_no,
+          account,
+          created_at
+      ]
+      """
 
     context = GetContext()
 
@@ -909,17 +1002,13 @@ def get_all_verifying():
 
         created_at = result_iter.IterValue()
 
-        account = substr(key, pre, 20)
+        account = substr(key, pre, pre + 19)
 
-        ticket_no = substr(key, pre + 20, len(key) - (pre + 20))
-
-        rank = get_rank(ticket_no)
+        ticket_no = substr(key, pre + 20, len(key))
 
         verifier.append(ticket_no)
 
         verifier.append(account)
-
-        verifier.append(rank)
 
         verifier.append(created_at)
 
@@ -942,7 +1031,11 @@ def get_all_tickets_by_player(player):
 
     while result_iter.IterNext():
 
+        key = result_iter.IterKey()
+
         ticket_no = result_iter.IterValue()
+
+        Notify(key)
 
         ticket = get_ticket_info(ticket_no)
 
@@ -979,25 +1072,15 @@ def get_all_operators_by_player(account):
 
         key = result_iter.IterKey()
 
-        created_at = result_iter.IterValue()
+        total_entries = result_iter.IterValue()
 
         key_length = len(key)
 
         game_no = substr(key, pre, key_length)
 
-        previous_ticket = concat(LAST_DRAWING_TICKET, game_no - 1)
-
-        previous_ticket = Get(context, previous_ticket)
-
-        last_ticket = concat(LAST_DRAWING_TICKET, game_no)
-
-        last_ticket = Get(context, last_ticket)
-
         operator.append(game_no)
 
-        operator.append(last_ticket - previous_ticket)
-
-        operator.append(created_at)
+        operator.append(total_entries)
 
         operators.append(serialize_array(operator))
 
@@ -1030,11 +1113,7 @@ def get_all_verifiers_by_player(account):
 
         ticket_no = substr(key, pre, key_length)
 
-        rank = get_rank(ticket_no)
-
         verifier.append(ticket_no)
-
-        verifier.append(rank)
 
         verifier.append(created_at)
 
@@ -1062,7 +1141,7 @@ def get_rank(ticket_no):
         numbers = deserialize_bytearray(ticket[2])
 
         # -- Get the drawing result by the game number of the ticket and match numbers.
-        drawing_result = get_winning_numbers(game_no)
+        drawing_result = get_drawing_result(game_no)
 
         if not drawing_result:
 
@@ -1081,14 +1160,7 @@ def get_time_left():
 
     context = GetContext()
 
-    current_game_no = get_current_game_no()
-
-    if current_game_no == 1:
-        key = LAST_DRAWING_AT
-    else:
-        key = concat(LAST_DRAWING_AT, current_game_no - 1)
-
-    last_drawing_at = Get(context, key)
+    last_drawing_at = Get(context, LAST_DRAWING_AT)
 
     now = GetTime()
 
@@ -1138,33 +1210,6 @@ def is_verifying_open():
     return False
 
 
-def is_drawing_open(account):
-
-
-    check = has_user_participated(account)
-
-    if not check:
-        return notifyErrorAndReturnFalse("No entries in the current game")
-
-    time_left = get_time_left()
-
-    if (time_left < 0):
-
-        return notifyErrorAndReturnFalse("It is not time")
-
-    last_sold_ticket = get_last_ticket_no()
-
-    last_drawn_ticket = get_last_drawing_ticket_no()
-
-    total_entries = last_sold_ticket - last_drawn_ticket
-
-    if total_entries <= 0:
-
-        return notifyErrorAndReturnFalse("No entries in the current game")
-
-    return True
-
-
 # -- NEP5 calls
 
 def do_transfer(t_from, t_to, amount):
@@ -1176,15 +1221,17 @@ def do_transfer(t_from, t_to, amount):
         notifyErrorAndReturnFalse("Amount MUST be greater than or equal to 0")
 
     if len(t_from) != 20:
-        return notifyErrorAndReturnFalse("From should be 20-byte addresses")
+        # raise Exception('From should be 20-byte addresses')
+        notifyErrorAndReturnFalse("From should be 20-byte addresses")
 
     if len(t_to) != 20:
-        return notifyErrorAndReturnFalse("From should be 20-byte addresses")
+        notifyErrorAndReturnFalse("From should be 20-byte addresses")
 
     if CheckWitness(t_from):
 
         if t_from == POOL:
-            return notifyErrorAndReturnFalse("Nobody can withdraw from the pool")
+            # raise Exception("Nobody can withdraw from the pool")
+            notifyErrorAndReturnFalse("Nobody can withdraw from the pool")
 
         if t_from == t_to:
             Log("Transfer to self")
@@ -1222,6 +1269,7 @@ def do_transfer(t_from, t_to, amount):
 def balanceOf(ctx, account):
 
     if len(account) != 20:
+        # raise Exception('Account should be 20-byte addresses')
         return notifyErrorAndReturnFalse("Account should be 20-byte addresses")
 
     balance = Get(ctx, account)
@@ -1325,30 +1373,58 @@ def notifyErrorAndReturnZero(msg):
 
 
 def getLucky():
+    """
+    Method to generate random numbers using the latest block nounce
+    :return: random numbers array
 
+    """
+
+    # Lottery numbers
     numbers = [
-        1, 2, 3, 4, 5, 6, 7, 8, 9, 10 , 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39
+        1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49
     ]
 
-    winning_numbers = []
+    # Ready empty list
+    winning_numbers = list(0)
 
+    # Get random nonce number in the latest block
     currentHeight = GetHeight()
     currentHeader = GetHeader(currentHeight)
     randomNumber = GetConsensusData(currentHeader)
-    randomNumber = randomNumber * GetTime()
 
     for i in range(1, 6):
 
-        percentage = (randomNumber * i) % (39 - i)
+        percentage = (randomNumber * i) % (49 - i)
 
         winning_numbers.append(numbers[percentage])
 
         numbers.remove(percentage)
 
-    return serialize_array(winning_numbers)
+    bonusIndex = ((randomNumber * 6) % 9) + 1
+
+    winning_numbers.append(bonusIndex)
+
+    winning_numbers = [1,2,3,4,5,1]
+
+    return winning_numbers
+
+# def sort(list):
+#     for index in range(1, len(list)):
+#         value = list[index]
+#         i = index - 1
+#         while i >= 0:
+#             if value < list[i]:
+#                 list[i + 1] = list[i]
+#                 list[i] = value
+#                 i -= 1
+#             else:
+#                 break
+#
+#     return list
 
 
-# --- Init smart contact
+# --- initial smart contact
+
 
 def deploy():
 
@@ -1358,42 +1434,62 @@ def deploy():
 
         return notifyErrorAndReturnFalse("Must be owner to deploy")
 
-    if not Get(context, DEPLOYED_AT):
-
-        current_time = GetTime()
-
-        Put(context, DEPLOYED_AT, current_time)
-
-        Put(context, OWNER, TOTAL_SUPPLY)
-
-        DispatchTransferEvent(None, OWNER, TOTAL_SUPPLY)
-
-    else:
-        return notifyErrorAndReturnFalse("Already deployed!")
-
-
-def launch():
-
-    context = GetContext()
-
-    if not CheckWitness(OWNER):
-
-        return notifyErrorAndReturnFalse("Must be owner to launch")
-
     if not Get(context, LAUNCHED_AT):
 
         current_time = GetTime()
 
         Put(context, LAUNCHED_AT, current_time)
 
-        Put(context, CURRENT_GAME_NO, 1)
+        Put(context, LAST_DRAWING_AT, current_time)
 
-        key = concat(LAST_DRAWING_AT, 0)
+        # result = [
+        #     serialize_array([1,2,3,4,5,6]),
+        #     1,
+        #     0,
+        #     0,
+        #     GetTime(),
+        # ]
+        #
+        # key = concat(RESULT, 0)
+        #
+        # Put(context, key, serialize_array(result))
 
-        Put(context, key, current_time)
+        Put(context, OWNER, TOTAL_SUPPLY)
+
+        DispatchTransferEvent(None, OWNER, TOTAL_SUPPLY)
 
         return do_transfer(OWNER, POOL, INITIAL_POOL)
 
     else:
-        return notifyErrorAndReturnFalse("Already launched!")
+        notifyErrorAndReturnFalse("Already deployed!")
+
+
+# --- Testnet only
+
+AIRDROP = 'airdrop'
+
+def bounty(address):
+
+    context = GetContext()
+
+    key = concat(AIRDROP,address)
+
+    user = Get(context,key)
+
+    if not user:
+
+        user_balance = balanceOf(context, address)
+        owner_balance = balanceOf(context, OWNER)
+
+        # 100 FTW
+        Put(context, address, user_balance + 10000000000)
+        Put(context, OWNER, owner_balance - 10000000000)
+        Put(context, key, "participated")
+
+        return True
+
+    else:
+
+        return notifyErrorAndReturnFalse("Already participated")
+
 
