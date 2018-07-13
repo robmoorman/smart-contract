@@ -9,6 +9,11 @@
   The first pure decentralized blockchain lottery based on NEO
 </p>
 
+## MainNet
+HASH: 0x11dbc2316f35ea031449387f615d9e4b0cbafe8b
+OWNER address: AbvAMiWRib6GzGZKU1o8QxUntnzhCwjXdS <br>
+POOL address: AMGqV7HJFrvxnXxVCzUjEcw4Gv3mdGReiF
+
 ## Philosophy 
 
 We believe the future of the lottery is blockchain that removes geographical limitations and brings full transparency to

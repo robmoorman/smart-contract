@@ -33,19 +33,8 @@ SYMBOL = 'FTW'
 DECIMALS = 8
 TOTAL_SUPPLY = 100000000 * 100000000  # 100m total supply * 10^8 (decimals)
 
-# -- MainNet
-
-OWNER = b'\xdc\xf3\xca\xef\xf9\xbb;\xf1\xf0?\xbb\x18\x81\x9cj\xba\x98r\xdc\xe4'  # AbvAMiWRib6GzGZKU1o8QxUntnzhCwjXdS
-POOL = b'<R\xe3\x1d\x07\nX\x174\x97\x17\xa6V*\x0c\xa2>\xa6\xe2\xeb'  # AMGqV7HJFrvxnXxVCzUjEcw4Gv3mdGReiF
-
-# # -- TestNet
-DRAWING_SCHEDULE = 120
-OWNER = b'\x99\xd6H\x1aQh\x8c\xd1j\x0bX\x02=\x17\xd4\xdd\x9b\rS6'
-
-# # -- PrivateNet
-DRAWING_SCHEDULE = 5
-OWNER = b'#\xba\'\x03\xc52c\xe8\xd6\xe5"\xdc2 39\xdc\xd8\xee\xe9'  # AK2nJJpJr6o664CWJKi1QRXjqeic2zRp8y
-
+OWNER = b'\xdc\xf3\xca\xef\xf9\xbb;\xf1\xf0?\xbb\x18\x81\x9cj\xba\x98r\xdc\xe4'
+POOL = b'<R\xe3\x1d\x07\nX\x174\x97\x17\xa6V*\x0c\xa2>\xa6\xe2\xeb'
 
 # -------------------------------------------
 # Events NEP5
