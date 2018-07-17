@@ -6,72 +6,82 @@
 
 <h1>FTW Smart contact</h1>
 <p>
-  The first pure decentralized blockchain lottery based on NEO
+    The first pure decentralized blockchain lottery based on NEO
 </p>
 
-## MainNet
-HASH: 0x11dbc2316f35ea031449387f615d9e4b0cbafe8b
-OWNER address: AbvAMiWRib6GzGZKU1o8QxUntnzhCwjXdS <br>
+
+FTW token hash: 11dbc2316f35ea031449387f615d9e4b0cbafe8b<br>
 POOL address: AMGqV7HJFrvxnXxVCzUjEcw4Gv3mdGReiF
 
-## Philosophy 
+#### What is decentralized lottery?
+Game rules are similar to traditional lotteries but the game is managed by people. There are no fees to any organizations or 3rd parties.
 
-We believe the future of the lottery is blockchain that removes geographical limitations and brings full transparency to
-the process, offering unprecedented trust and quality.
+### How does it work?
+People can participate to draw the lottery and verify tickets and earn commissions. Similar concept to POW.
 
-
-## How it works
-
-Two different parties participate this smart contract.
-
-##### Players
-
-Players buy lottery tickets.
-
-##### Miners
-
-Miners draw the lottery, verify and distribute prizes to winners. Miners earn commissions.
-
-## Game rules
+#### 1. Tickets
 
 By purchasing the lottery tickets, you guarantee that you are 18 years of age and/or you have reached the minimum age for legally participating in the lottery in your country of residence.
 
-- Ticket price: 1 FTW
-- Drawing timestamp: 86400 (1 day)
-- 5 numbers from 1 to 49 and 1 bonus number from 1 to 10
-- Prizes
-    -  5 numbers + bonus number: 1000000 FTW
-    -  5 numbers: 50000 FTW
-    -  4 numbers + bonus number: 500 FTW
-    -  4 numbers: 250 FTW
-    -  3 numbers + bonus number: 10 FTW
-    -  2 numbers + bonus number: 5 FTW
-    -  1 numbers + bonus number: 3 FTW
-    -  bonus number: 1 FTW
-    
-    
-## Drawing & Verifying rules
+##### Rules
+* 1 ticket = 1 FTW.
+* Users pick 5 numbers from 1 to 39.
 
-People can participate to draw the lottery and distribute prizes. It is kinds of "Proof of work" system. Whoever triggers the smart contract with its method will earn reward if the trigger succeed. 
+##### How to participate
+* Send 1 FTW to FTW pool address (AMGqV7HJFrvxnXxVCzUjEcw4Gv3mdGReiF). Autopick only*
+* Use FTW wallet.
 
-##### Drawing
+##### Winning prizes and odds
+* Matched 5 of 5 numbers: 60,000 FTW (1 in 575,757)
+* Matched 4 of 5 numbers: 700 FTW (1 in 3,387)
+* Matched 3 of 5 numbers: 30 FTW (1 in 103)
+* Matched 2 of 5 numbers: 3 FTW (1 in 10)
 
-Users can trigger the smart contract to draw the current game after it passes 1 day (timestamp: 86400) from the last drawing.
 
-- Reward: 5% of total ticket sales of the game
-- Must buy at least 1 ticket to be qualified to participate
-- First come First served
+#### 2. Drawing
 
-##### Verifying
+##### Rules
+* Every users can participate to draw the lottery.
+* One drawer per game. First come first served.
+* Every 12 hours.
+* Free to participate.
+* Participators must buy at least one ticket of the current game that is being drawn. If not, submission will be rejected by the smart contract.
 
-The trigger will verify tickets.
+##### Commission
+Total ticket sales of the current game x 5% of ticket price.
 
-- Reward: 5% of a ticket.
-- No requirement to participate
+##### How to participate
+* Send 2 FTW to FTW pool address. 2 FTW will not be transferred to the pool.
+* Use FTW wallet.
 
-## Winning numbers
+##### How does FTW smart contract make winning numbers?
+When the smart contract is triggered by participators, it uses nonce of the current block to create winning numbers. You can check the source code for detail.
 
-We use the nonce field of the latest block to generate winning numbers. Check details in the source code.
+##### Example
+Current lottery game #1 sold 1000 tickets<br/>
+It passed 12 hours from the last drawing which was for game #0.<br/>
+User A send 2 FTW to FTW pool address.<br/>
+User B hits a drawing button in FTW wallet.<br/>
+A triggered the smart contract faster than B<br/>
+A gets 50 FTW for commission.
+
+#### 3. Verifying
+
+##### Rules
+* Every users can participate to verify winning tickets.
+* Participators must have 1000 FTW or more to be qualified. If not, submission will be rejected by the smart contract.
+
+##### Commission
+Verified a no winning ticket = 0.05 FTW
+Verified a winning ticket = 5% of winning prize.
+
+##### How to participate
+* Send 3 FTW to FTW pool address. 3 FTW will not be transferred to the pool.
+* Use FTW wallet.
+
+##### Example
+After A made drawing, <br/>
+Users can start to verify each of 1000 tickets if it is a winning ticket or not.
 
 
 ## Methods
@@ -93,10 +103,10 @@ buy(address,numbers...)
 ```
 # -- Example
 
-@param address:string - player address (required)
-@param int:number - five numbers from 1 to 49 and one number from 1 to 10 (more than 6 numbers are required)
+@param hash:string - hash of player address
+@param int:number - five numbers from 1 to 39 
 
-buy("AK2nJJpJr6o664CWJKi1QRXjqeic2zRp8y",1,2,3,4,5,10,1,2,3,4,5,10)
+buy("AK2nJJpJr6o664CWJKi1QRXjqeic2zRp8y",1,2,3,4,5)
 ```
 
 draw(address)
@@ -104,7 +114,7 @@ draw(address)
 ```
 # -- Example
 
-@param address:string - applicant address (required)
+@param hash:string - hash of applicant address
 
 draw("AK2nJJpJr6o664CWJKi1QRXjqeic2zRp8y")
 ```
@@ -114,22 +124,27 @@ verify(address)
 ```
 # -- Example
 
-@param address:string - applicant address (required)
+@param address:string - hash of applicant address
 
 draw("AK2nJJpJr6o664CWJKi1QRXjqeic2zRp8y")
 ```
 get_pool()<br/>
 get_current_game_no()<br/>
-time_left()<br/>
+get_time_left()<br/>
 get_last_ticket_no()<br/>
 get_last_verified_ticket_no()<br/>
-get_last_drawing_result()<br/>
-get_ticket_info(no)<br/>
+get_last_drawing_ticket_no()<br/>
+get_last_drawing_at()<br/>
+get_ticket_info(ticket_no)<br/>
 get_drawing_result(no)<br/>
 get_all_tickets_by_player(address)<br/>
-get_all_drawing_results_()<br/>
+get_all_operators_by_player(address)<br/>
+get_all_verifiers_by_player(address)<br/>
+get_all_tickets_()<br/>
+get_all_drawings_()<br/>
+get_all_verifying_()<br/>
 
 
-## Play
+## Trigger
 You can trigger method using [NEO-CLI](https://github.com/neo-project/neo-cli), [NEO-GUI](https://github.com/neo-project/neo-gui) and other NEO wallet that supports NEP5 tokens.<br/>
-[FTW wallet](https://wallet.ftwcoin.io) provides nice UI for this smart contract.
+[FTW wallet](https://wallet.ftwcoin.io) provides UI for the games.
