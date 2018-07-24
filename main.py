@@ -66,7 +66,8 @@ def Main(operation, args):
 
     elif trigger == Application():
 
-        # -- NEP5 Standard
+        # -- NEP5 standard methods
+
         if operation == 'name':
 
             return TOKEN_NAME
@@ -135,7 +136,7 @@ def Main(operation, args):
 
                 return notifyErrorAndReturnFalse("Argument count must be 3 and they must not be null")
 
-        # -- FTW
+        # -- Lottery methods
 
         elif operation == 'launch':
 
@@ -148,6 +149,8 @@ def Main(operation, args):
             if len(args) == 6:
 
                 numbers = list(0)
+
+                # -- A trick to verify lottery numbers. 5 numbers in 1 to 39.
 
                 five_number_dict = {}
 
@@ -312,15 +315,26 @@ def Main(operation, args):
             return notifyErrorAndReturnFalse('unknown operation')
 
 
+# -------------------------------------------
+# A custom method to participate the lottery.
+# player: hash
+# numbers: [int]
+# -------------------------------------------
+
 def buy(player, numbers):
 
     context = GetContext()
 
     current_game_no = Get(context, CURRENT_GAME_NO)
 
+    # Check if the lottery is launched.
+    # A method called launch() needs to be triggered by this contract owner in order to begin the lottery.
+
     if not current_game_no:
 
         return notifyErrorAndReturnFalse("The game has not been launched yet")
+
+    # Ticket price will be transferred to the POOL
 
     is_transferred = do_transfer(player, POOL, TICKET_PRICE)
 
@@ -347,6 +361,8 @@ def buy(player, numbers):
 
         player_key = concat(player_key, current_game_no)
 
+        # It needs flags to fetch all tickets by addresses and in order to check if a user is qualified for drawing.
+
         if not has_user_participated(player):
 
             player_key = concat(player_key, "first")
@@ -363,27 +379,10 @@ def buy(player, numbers):
 
     return False
 
-
-def autopick(player):
-
-    samples = [
-        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39
-    ]
-
-    numbers = []
-
-    randomNumber = GetTime()
-
-    for i in range(1, 6):
-
-        percentage = (randomNumber * i) % (39 - i)
-
-        numbers.append(samples[percentage])
-
-        samples.remove(percentage)
-
-    return buy(player,numbers)
-
+# -------------------------------------------
+# A custom method to participate draws.
+# miner: hash
+# -------------------------------------------
 
 def draw(miner):
 
@@ -405,6 +404,8 @@ def draw(miner):
 
     current_game_no = Get(context, CURRENT_GAME_NO)
 
+    # The initial LAST_DRAWING_AT is concatenated with 0.
+
     if current_game_no == 1:
 
         key = LAST_DRAWING_AT
@@ -419,6 +420,8 @@ def draw(miner):
 
     time_left = now - (last_drawing_at + DRAWING_SCHEDULE)
 
+    # It must pass 12 hours from last drawing.
+
     if (time_left > 0):
 
         last_sold_ticket = Get(context, LAST_TICKET_NO)
@@ -429,54 +432,55 @@ def draw(miner):
 
         total_entries = last_sold_ticket - last_drawn_ticket
 
+        # The current game has to have a minimum of 1 ticket sales.
+
         if total_entries <= 0:
 
             return notifyErrorAndReturnFalse("No entries in the current game")
 
+        # Commission to trigger this method.
+
         commission = total_entries * DRAWING_COMMISSION
 
-        # -- Get last drawing result
-
         flag_key = concat(PLAYER, miner)
-
         flag_key = concat(flag_key, current_game_no)
-
         flag_key = concat(flag_key, "first")
-
         flag = Get(context, flag_key)
+
+        # Check if the user who is triggering this method participated the current game.
 
         if not flag:
 
             return notifyErrorAndReturnFalse("You did not participate the current game")
 
-        # -- Get winning numbers and Store
+        # Get winning numbers and Store
+
         winning_numbers = getLucky()
-
         result_key = concat(WINNING_NUMBERS, current_game_no)
-
         Put(context, result_key, winning_numbers)
 
+        # Store the info of user who is triggering.
+
         current_time = GetTime()
-
-        # -- Miner info
         operator_key = concat(OPERATOR, miner)
-
         operator_key = concat(operator_key, current_game_no)
-
         Put(context, operator_key, current_time)
 
-        # -- Update LAST_DRAWING_AT with timestamp in order to schedule for the next drawing.
-        drawing_timestamp_key = concat(LAST_DRAWING_AT, current_game_no)
+        # Update LAST_DRAWING_AT with timestamp in order to schedule for the next drawing.
 
+        drawing_timestamp_key = concat(LAST_DRAWING_AT, current_game_no)
         Put(context, drawing_timestamp_key, current_time)
 
-        # -- Update LAST_DRAWING_TICKET with the last ticket number of the current game to help verification.
-        last_drawing_ticket_no_key = concat(LAST_DRAWING_TICKET, current_game_no)
+        # Update LAST_DRAWING_TICKET with the last ticket number of the current game to help verification.
 
+        last_drawing_ticket_no_key = concat(LAST_DRAWING_TICKET, current_game_no)
         Put(context, last_drawing_ticket_no_key, last_sold_ticket)
 
-        # -- Update CURRENT_GAME_NO with a new game no which is the next game no.
+        # Update CURRENT_GAME_NO with a new game no which is the next game no.
+
         Put(context, CURRENT_GAME_NO, current_game_no + 1)
+
+        # Check if prize pool has enough amount to pay the commission
 
         if prize_pool >= commission:
 
@@ -496,6 +500,10 @@ def draw(miner):
 
         return notifyErrorAndReturnFalse("Please wait until the next drawing schedule")
 
+# -------------------------------------------
+# A custom method to participate ticket verification.
+# miner: hash
+# -------------------------------------------
 
 def verify(miner):
 
@@ -513,6 +521,8 @@ def verify(miner):
 
     miner_balance = balanceOf(context, miner)
 
+    # A verifier has to have 1000 FTW or more to trigger this method.
+
     if miner_balance < 100000000000:
 
         return notifyErrorAndReturnFalse("Verifier must have more than 1000FTW")
@@ -524,6 +534,8 @@ def verify(miner):
     ticket_to_verify = last_verified_ticket_no + 1
 
     last_drawing_ticket = get_last_drawing_ticket_no()
+
+    # Check if there are available tickets to verify
 
     if ticket_to_verify > last_drawing_ticket:
 
@@ -545,7 +557,11 @@ def verify(miner):
 
     drawing_result = Get(context, drawing_result_key)
 
+    # Get winning numbers from the ticket which is being verified.
+
     winning_numbers = deserialize_bytearray(drawing_result)
+
+    # Match if the ticket is a winning ticket.
 
     rank = match_rank(numbers, winning_numbers)
 
@@ -572,11 +588,17 @@ def verify(miner):
 
         total_amount = prize + reward
 
+        # Check if the prize pool can afford to pay the winning prize.
+
         if prize_pool >= prize:
 
             player_balance = Get(context, player)
 
+            # The prize pool can afford to pay the winning prize and reward.
+
             if prize_pool >= total_amount:
+
+                # Check if verifiers is verifying his own ticket.
 
                 if player == miner:
 
@@ -598,6 +620,8 @@ def verify(miner):
 
                     DispatchTransferEvent(POOL, miner, reward)
 
+            # The prize pool can on only pay the winning prize.
+
             else:
 
                 Put(context, player, player_balance + prize)
@@ -612,21 +636,27 @@ def verify(miner):
 
             return notifyErrorAndReturnFalse("Pool can not afford to pay the prize")
 
+    # Verifying no winning ticket.
+
     else:
 
         if prize_pool >= DRAWING_COMMISSION:
 
-            # -- Update miner balance
+            # Pay the verifier
+
             Put(context, miner, miner_balance + DRAWING_COMMISSION)
 
-            # -- Update pool balance
             Put(context, POOL, prize_pool - DRAWING_COMMISSION)
 
             DispatchTransferEvent(POOL, miner, DRAWING_COMMISSION)
 
             DispatchVerifyEvent(miner, ticket_to_verify)
 
+    # Update verified ticket number to able to track for the next one.
+
     Put(context, LAST_VERIFIED_TICKET_NO, ticket_to_verify)
+
+    # Store verifier information with current time to fetch all verifiers by address.
 
     verifier_key = concat(VERIFIER, miner)
 
@@ -635,6 +665,33 @@ def verify(miner):
     Put(context, verifier_key, GetTime())
 
     return True
+
+
+# -------------------------------------------
+# A custom method to generate random lottery numbers and participate the lottery.
+# player: hash
+# -------------------------------------------
+
+def autopick(player):
+    samples = [
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30,
+        31, 32, 33, 34, 35, 36, 37, 38, 39
+    ]
+
+    numbers = []
+
+    # Use current time in blockchain to in order to generate the numbers.
+
+    randomNumber = GetTime()
+
+    for i in range(1, 6):
+        percentage = (randomNumber * i) % (39 - i)
+
+        numbers.append(samples[percentage])
+
+        samples.remove(percentage)
+
+    return buy(player, numbers)
 
 
 def match_rank(numbers, winning_numbers):
@@ -672,6 +729,30 @@ def match_rank(numbers, winning_numbers):
         rank = 4
 
     return rank
+
+
+def getLucky():
+
+    numbers = [
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10 , 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39
+    ]
+
+    winning_numbers = []
+
+    currentHeight = GetHeight()
+    currentHeader = GetHeader(currentHeight)
+    randomNumber = GetConsensusData(currentHeader)
+    randomNumber = randomNumber * GetTime()
+
+    for i in range(1, 6):
+
+        percentage = (randomNumber * i) % (39 - i)
+
+        winning_numbers.append(numbers[percentage])
+
+        numbers.remove(percentage)
+
+    return serialize_array(winning_numbers)
 
 
 def get_pool():
@@ -1312,29 +1393,6 @@ def notifyErrorAndReturnZero(msg):
     Log(msg)
     return 0
 
-
-def getLucky():
-
-    numbers = [
-        1, 2, 3, 4, 5, 6, 7, 8, 9, 10 , 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39
-    ]
-
-    winning_numbers = []
-
-    currentHeight = GetHeight()
-    currentHeader = GetHeader(currentHeight)
-    randomNumber = GetConsensusData(currentHeader)
-    randomNumber = randomNumber * GetTime()
-
-    for i in range(1, 6):
-
-        percentage = (randomNumber * i) % (39 - i)
-
-        winning_numbers.append(numbers[percentage])
-
-        numbers.remove(percentage)
-
-    return serialize_array(winning_numbers)
 
 
 # --- Init smart contact
